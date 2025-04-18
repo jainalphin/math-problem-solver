@@ -1,0 +1,102 @@
+name: Deploy to Hugging Face
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install git+https://github.com/huggingface/huggingface_hub
+
+      - name: Configure Hugging Face CLI
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Configure Hugging Face CLI
+          python -c "from huggingface_hub.hf_api import HfApi; HfApi().set_access_token('$HF_TOKEN')"
+
+      - name: Deploy to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+          SPACE_NAME: "math-problem-solver"
+        run: |
+          # Clone the repository if it exists, or create a new one
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          
+          # Try to clone the space or create a new one
+          if ! git clone https://huggingface.co/${HF_USERNAME}/${SPACE_NAME}; then
+            mkdir -p ${SPACE_NAME}
+            cd ${SPACE_NAME}
+            git init
+            git remote add origin https://huggingface.co/${HF_USERNAME}/${SPACE_NAME}
+            echo -e "---\ntitle: Math Problem Solver\nsdk: streamlit\nsdk_version: 1.28.0\nemoji: 🧮\ncolorFrom: blue\ncolorTo: green\npinned: true\n---\n\n# Math Problem Solver\n\nAI-powered math problem solver using Google Gemma 2 and other models." > README.md
+            git add README.md
+            git commit -m "Initial commit"
+            git push --set-upstream https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/${HF_USERNAME}/${SPACE_NAME} main
+            cd ..
+          fi
+          
+          # Copy all project files to the space directory
+          cd ${SPACE_NAME}
+          cp -r ../app.py ../requirements.txt . 2>/dev/null || :
+          if [ -d "../screenshots" ]; then
+            mkdir -p screenshots
+            cp -r ../screenshots/* screenshots/ 2>/dev/null || :
+          fi
+          
+          # Create or update .gitignore to ignore unnecessary files
+          echo ".env" > .gitignore
+          echo "__pycache__/" >> .gitignore
+          echo ".streamlit/secrets.toml" >> .gitignore
+          
+          # Create Hugging Face Space specific files
+          cat > README.md <<EOL
+---
+title: Math Problem Solver
+sdk: streamlit
+sdk_version: 1.28.0
+emoji: 🧮
+colorFrom: blue
+colorTo: green
+pinned: true
+app_file: app.py
+---
+
+# Math Problem Solver
+
+AI-powered math problem solver using Google Gemma 2 and other models through Groq API.
+
+## Features
+
+- Solves a wide range of math problems
+- Step-by-step explanations
+- Multiple AI model support
+- Interactive chat interface
+
+[GitHub Repository](https://github.com/${{ github.repository }})
+EOL
+          
+          # Commit and push changes
+          git add .
+          git commit -m "Update from GitHub Actions" || echo "No changes to commit"
+          git push https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/${HF_USERNAME}/${SPACE_NAME} main
