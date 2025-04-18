@@ -17,5 +17,4 @@ jobs:
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_USERNAME: ${{ secrets.HF_USERNAME }}
         run: git push https://AlphJain:$HF_TOKEN@huggingface.co/spaces/AlphJain/math-problem-solver main
